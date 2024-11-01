@@ -47,3 +47,6 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# first lab solution (too basic)
+Lab1.Rmd

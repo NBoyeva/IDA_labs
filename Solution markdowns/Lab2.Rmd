@@ -2,7 +2,7 @@
 title: "Lab 2"
 author: "Nadzeya_Boyeva"
 date: "2024-10-25"
-output: html_document
+output: pdf_document
 ---
 
 ```{r}
@@ -37,7 +37,7 @@ V1 – "x variable", based on which we will predict V2 (let's say it's length of
 
 V2 – "y variable", which will be predicted (let's say it's mass);
 
-V3 – error of V2.
+V3 – standard deviation of V2.
 
 ```{r}
 df = read.table("data9.txt")
@@ -166,14 +166,20 @@ Let's figure out, which model is better for our data.
 Normalized criterion for a model, which provides a good description of data should be approximately 1. In our case chi-squared model 1 (with theta 4.95...) seems to be the best.
 
 ```{r}
-model_names <- c('Normal', 'Exponential1', 'Exponential2', 'Chi-squared1', 'Chi-squared2')
+model_names <- c('Normal', 
+                 'Exponential1', 
+                 'Exponential2', 
+                 'Chi-squared1', 
+                 'Chi-squared2')
 models <- list(model_norm, model_exp1, model_exp2, model_chisq1, model_chisq2)
 df_values <- c(197, 198, 198, 198, 198)
 
 for (i in seq_along(models)) {
   chi_sq <- sum(((predict(models[[i]]) - df$V2)/df$V3)^2)
   n_chi_sq <- chi_sq/df_values[i]
-  print(paste0('Normalized Chi-squared criterion for model ', model_names[i], ': ', round(n_chi_sq, 2)))
+  print(paste0('Normalized Chi-squared criterion for model ', 
+               model_names[i], ': ', 
+               round(n_chi_sq, 2)))
 }
 ```
 
@@ -197,7 +203,7 @@ get_df_res <- function(models,
   return(df_res)
 }
 
-df_res <- get_df_res(models = list(model_norm, model_exp1, model_exp2, model_chisq1, model_chisq2),
+df_res <- get_df_res(models = models,
            model_names = c('Normal', 
                            'Exponential1', 
                            'Exponential2', 
@@ -232,30 +238,24 @@ ggplot(df_res, aes(x = fitted, y = residuals, color = model)) +
 
 As we can see, chi-squared model 1 has residuals about zero over all fitting steps. This supports the fact this model is the best for our data.
 
-#### Function for plotting single model residuals
+Residual plot for chi-squared 1 model only:
 
 ```{r}
-get_df_res <- function(model, 
-                       data=df, 
-                       n_observations = 200, 
-                       yname='V2',
-                       errname='V3') {
-  df_res <- cbind(data.frame(c(1:n_observations)),
-                  (data[yname] - predict(model))/data[errname]) # or residuals(model)/data[errname]
-  colnames(df_res) <- c('fitted', 'residuals')
-  return(df_res)
-}
-```
+df_res_chisq1 <- get_df_res(models = list(model_chisq1),
+           model_names = c('Chi-squared1'))
 
-```{r}
-plot_res <- function(df_res) {
-  ggplot(data=df_res, aes(x = fitted, y = residuals)) +
-  geom_line() +
-  geom_hline(yintercept = 0) +
-  labs(title='Residual vs. Fitted Values Plot', 
-       x='Fitted Values', 
-       y='Residuals')
-}
+df_res_chisq1 <- df_res_chisq1 %>%
+  pivot_longer(cols = c('Chi-squared1'),
+               names_to = "model",
+               values_to = "residuals")
+
+ggplot(df_res_chisq1, aes(x = fitted, y = residuals, color = model)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  labs(title = "Residuals for Chi-squared model 1",
+       x = "Fitted Values",
+       y = "Residuals") +
+  theme(legend.title = element_blank())
 ```
 
 ## *Autocorrelation function*
@@ -299,7 +299,7 @@ ggplot(df_acf, aes(x = lag, y = acf, color = model)) +
   theme(legend.title = element_blank())
 ```
 
-Let's check if we can create the same plot, but calculating ACF value via its formula, without using acf() function. Formula for the autocorrelation function A_k for the given lag k is:
+Let's check if we can create the same plot, but calculating ACF value via its formula, without using acf() function. Formula for the autocorrelation function A_k for the given lag k is (R – residuals):
 
 $$
 A_k = \frac{\frac{1}{N-k+1} \sum_{i=1}^{N-k+1} R_iR_{i+k-1}}{\frac{1}{N} \sum_{i=1}^{N}R_i^2}
@@ -356,7 +356,7 @@ ggplot(df_custom_acf, aes(x = lag, y = acf, color = model)) +
   theme(legend.title = element_blank())
 ```
 
-As we can see, the result is similar, and also supports chi-squared model 1, since for this model ACF mostly oscillates around zero.
+As we can see, the result is similar, and also supports chi-squared model 1, since for this model ACF mostly oscillates around zero. That means that difference between data and model predictions is mot systemic.
 
 # Task 6
 
@@ -375,6 +375,10 @@ Let's calculate confidence intervals with custom function and see if results dif
 $$
 \overline\theta + t_{\alpha/2,v} \sqrt{\chi_v^2 C_{jj}} \leq \theta \leq \overline\theta + t_{1-\alpha/2} \sqrt{\chi_v^2 C_{jj}}
 $$
+
+*t\_{\\alpha/2, v}, t\_{\\alpha/2, v} – Student distribution quantiles;*
+
+*Chi_v\^2 C_jj – chi-squared scaled diagonal of covariance matrix.*
 
 ```{r}
 custom_confint <- function(fitted_model, conf_level = 0.68) {
@@ -475,3 +479,42 @@ custom_confint(model_chisq2)
 ```
 
 CI for this model parameters could not be calculated correctly. That supports our idea about wrong fitting due to wrong initial condition.
+
+# Optional: check approximation
+
+The best model for our data id chi-squared with theta 4.95... Let's visualize it:
+
+```{r}
+df_pred <- data.frame(data_x = df$V1, 
+                      data_y = df$V2, 
+                      chisq1 = predict(model_chisq1),
+                      chisq2 = predict(model_chisq2),
+                      exp1 = predict(model_exp1),
+                      exp2 = predict(model_exp2),
+                      normal = predict(model_norm))
+```
+
+```{r}
+ggplot(df_pred, aes(x = data_x, y = data_y)) +
+  geom_point() + 
+  geom_line(aes(x = data_x, y = chisq1, color = 'Chi-squared 1'), 
+            lwd = 1.2, alpha = 0.7) +
+  geom_line(aes(x = data_x, y = chisq2, color = 'Chi-squared 2'), 
+            lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = data_x, y = exp1, color = 'Exponential 1'), 
+            lwd = 1, alpha = 0.5) +
+  geom_line(aes(x = data_x, y = exp2, color = 'Exponential 2'), 
+            lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = data_x, y = normal, color = 'Normal'), 
+            lwd = 1, alpha = 0.7) +
+  labs(title = "Data and Model Approximations", y = "Mass", x = "Length") +
+  scale_color_manual(
+    values = c('Chi-squared 1' = 'purple', 
+               'Chi-squared 2' = 'blue', 
+               'Exponential 1' = 'red', 
+               'Exponential 2' = 'orange', 
+               'Normal' = 'yellow')
+  ) +
+  theme(legend.title = element_blank())
+
+```

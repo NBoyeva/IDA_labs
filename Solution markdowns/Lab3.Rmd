@@ -1,0 +1,273 @@
+---
+title: "Lab 3"
+author: "Nadzeya_Boyeva"
+date: "2024-11-14"
+output: pdf_document
+---
+
+# Task 1
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+df = read.table("data9_lab3.txt")
+```
+
+## Step 1. Load data
+
+```{r}
+X <- as.matrix(df)
+N <- dim(X)[1]
+K <- dim(X)[2]
+```
+
+## Step 2. Normalize data
+
+$$
+x_{ij}^{'} = \frac{x_{ij} -  \overline{X}_j} {\sigma(X_j)}
+$$
+
+```{r}
+X_prime <- apply(X, 2, function(col)(col - mean(col))/sd(col))
+```
+
+## Step 3. Build covariance matrix
+
+$$
+\textbf{Cov} = \textbf{R} = \frac{\textbf{X}^{'T} \textbf{X}^{'}} {N-1}
+$$
+
+```{r}
+R <- (t(X_prime) %*% X_prime)/(N - 1)
+print(R)
+```
+
+```{r}
+R_df <- as.data.frame(as.table(R))
+colnames(R_df) <- c("Row", "Column", "Value")
+
+ggplot(R_df, aes(x = Column, y = Row, fill = Value)) +
+  geom_tile() +
+  scale_fill_gradient(low = "purple", high = "yellow") +
+  theme_minimal() +
+  labs(title = "Covariance matrix for Features", 
+       x = "Features", 
+       y = "Features") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+$$
+d = N \sum_{i=1}^K \sum_{j=i+1}^K r_{ij}^2
+$$
+
+```{r}
+updiag_elements_sum <- 0
+
+for (i in 1:(K-1)) {
+  for (j in (i+1):K) {
+    updiag_elements_sum <- updiag_elements_sum + R[i,j]^2
+  }
+}
+
+d <- N * updiag_elements_sum
+d
+```
+
+```{r}
+degrees_of_freedom <- K*(K - 1)/2
+alpha <- 0.05
+critical_value <- qchisq(1 - alpha,
+                         degrees_of_freedom)
+critical_value
+```
+
+Since d significantly exceeds critical_value threshold, usage of PCA is appropriate in this case.
+
+## Step 4. Calculate A and L matrices
+
+Now we compute eigenvalues and eigenvectors of features covariance matrix.
+
+$$
+\textbf{R} \textbf{A} = \textbf{A} \textbf{L}
+$$
+
+Matrix L – diagonal matrix of eigenvalues.
+
+Matrix A – eigenvectors.
+
+```{r}
+eig <- eigen(R)
+A <- eig$vectors
+L <- diag(eig$values)
+```
+
+```{r}
+RA <- as.matrix(R %*% A)
+AL <- as.matrix(A %*% L)
+attr(RA, "dimnames") <- NULL
+attr(AL, "dimnames") <- NULL
+
+all.equal(RA, AL)
+```
+
+## Step 5. Calculate objects projections on PCs
+
+$$
+\textbf{Z} = \textbf{X}^{'} \textbf{A}
+$$
+
+```{r}
+Z <- X_prime %*% A
+dim(Z)
+```
+
+# Task 2
+
+Create a function to run PCA algorithm on the dataframe given.
+
+```{r}
+check_cov <- function(K, N, R, alpha=0.05) {
+  
+  updiag_elements_sum <- 0
+  for (i in 1:(K-1)) {
+    for (j in (i+1):K) {
+      updiag_elements_sum <- updiag_elements_sum + R[i,j]^2
+    }
+  }
+  d <- N * updiag_elements_sum
+  
+  degrees_of_freedom <- K*(K - 1)/2
+  critical_value <- qchisq(1 - alpha,degrees_of_freedom)
+  critical_value
+  
+  if (d <= critical_value) {
+    return(1)
+  } else {
+    return(0)
+  }
+}
+
+
+pca_alg <- function(df) {
+  X <- as.matrix(df)
+  N <- dim(X)[1]
+  K <- dim(X)[2]
+  X_prime <- apply(X, 2, function(col)(col - mean(col))/sd(col))
+  R <- (t(X_prime) %*% X_prime)/(N - 1)
+  
+  # Check if PCA usage is appropriate
+  if (check_cov(K, N, R) == 1) {
+    stop("PCA usage is not appropriate: covariance matrix looks similar to identity matrix")
+  }
+  
+  eig <- eigen(R)
+  A <- eig$vectors
+  L <- diag(eig$values)
+  
+  RA <- as.matrix(R %*% A)
+  AL <- as.matrix(A %*% L)
+  
+  Z <- X_prime %*% A
+  
+  return(Z)
+}
+  
+```
+
+```{r}
+Z_via_func <- pca_alg(df)
+
+all.equal(Z, Z_via_func)
+```
+
+# Task 3
+
+## Step 1
+
+Check the equality of the sums of the sample variances of the original features and the sample variances of the projections of objects onto the principal components.
+
+```{r}
+sum(apply(Z, 2, var))
+sum(apply(X_prime, 2, var))
+```
+
+## Step 2
+
+Determine the relative proportion of the variance that falls on the principal components. Construct a covariance matrix for projections of objects onto the principal components.
+
+$$
+\alpha_j = \frac{\sigma^2(Z_j)}{\sum_{i=1}^{K} \sigma^2(Z_i)}
+$$
+
+```{r}
+PC_names <- c()
+PC_vars <- c()
+
+for (i in 1:K) {
+  print(paste0("Proportion of variance that falls on PC", 
+               i, ": ", round(diag(L)[i]/sum(diag(L)), 4)))
+  PC_names <- c(PC_names, paste0("PC", i))
+  PC_vars <- c(PC_vars, diag(L)[i]/sum(diag(L)))
+}
+
+PC_vars_df <- data.frame(PC=PC_names, Var=PC_vars)
+```
+
+```{r}
+ggplot(PC_vars_df, aes(x = PC, y = Var)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Barplot of PC Variables", 
+       x = "Principal Components", 
+       y = "Variance Proportion") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Now let's construct a covariance matrix for projections of objects onto the principal components.
+
+```{r}
+Z_cov <- (t(Z) %*% Z)/(N - 1)
+Z_cov
+```
+
+```{r}
+Z_cov_df <- as.data.frame(as.table(Z_cov))
+colnames(Z_cov_df) <- c("Row", "Column", "Value")
+Z_cov_df$Value <- log10(abs(Z_cov_df$Value) + 1e-10)
+
+Z_cov_df$Column <- factor(Z_cov_df$Column, 
+                          labels = paste0("PC", 
+                                          1:length(unique(Z_cov_df$Column))))
+Z_cov_df$Row <- factor(Z_cov_df$Row, 
+                       labels = paste0("PC",
+                                       1:length(unique(Z_cov_df$Row))))
+
+ggplot(Z_cov_df, aes(x = Column, y = Row, fill = Value)) +
+  geom_tile() +
+  scale_fill_gradient(low = "purple", high = "yellow") +
+  theme_minimal() +
+  labs(title = "Covariance matrix for PC projections", 
+       x = "Principal Components", 
+       y = "Principal Components") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Step 3
+
+Based on the first M = 2 principal components, construct a scatter plot.
+
+```{r}
+PC_data <- data.frame(PC1 = Z[, 1], PC2 = Z[, 2])
+
+
+ggplot(PC_data, aes(x = PC1, y = PC2)) +
+  geom_point(color = "purple") +
+  theme_minimal() +
+  labs(title = "Scatter Plot of First Two Principal Components", 
+       x = "PC1", 
+       y = "PC2")
+```
+
+We can see that along PC1 axis data is distributed more uniformly than along PC2 axis. The reason for this is that PC1 has more variance, than PC2.

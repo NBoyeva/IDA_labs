@@ -1,0 +1,226 @@
+---
+title: "Lab 4"
+author: "Nadzeya_Boyeva"
+date: "2024-11-15"
+output: pdf_document
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+```
+
+# Task 1. Load data
+
+```{r}
+df <- read.table('data9_lab4.txt')
+df
+```
+
+```{r}
+ggplot(df, aes(x = V1, y = V2)) +
+  geom_point(color = "purple") +
+  theme_minimal() +
+  labs(title = "Experimental Data Scatter Plot")
+```
+
+# Task 2. Calculate distance between objects
+
+## Euclidean distance
+
+$$
+d_2(n_i, n_j) = \left[ \sum_{l=1}^K(x_{il} - x_{jl})^2  \right]^{\frac{1}{2}}
+$$
+
+```{r}
+D_euc <- dist(df, method='euclidean')
+```
+
+## Manhattan distance
+
+$$
+d_H(n_i, n_j) = \sum_{l=1}^K \left| x_{il} - x_{jl}\right|
+$$
+
+```{r}
+D_manh <- dist(df, method='manhattan')
+```
+
+## Chebysheva (method='maximum')
+
+$$
+d_{Ch}(n_i, n_j) = \max_{1 \leq l \leq K}
+\left| x_{il} - x_{l_j}\right|$$
+
+```{r}
+D_max <- dist(df, method='maximum')
+```
+
+# Tasks 3-5
+
+```{r}
+dist_methods <- c('euclidean', 'manhattan', 'maximum')
+clust_methods <- c('complete', 'centroid', 'median')
+
+cc <- data.frame(matrix(ncol = 3, nrow = 3))
+colnames(cc) <- clust_methods
+rownames(cc) <- dist_methods
+
+for (dm in dist_methods) {
+  
+  D <- dist(df, method=dm)
+  
+  for (cm in clust_methods) {
+    cof <- cophenetic(hclust(D, method=cm))
+    cc[dm, cm] <- cor(D, cof)
+  }
+}
+
+cc
+```
+
+# Task 6
+
+```{r}
+max_pos <- which(cc == max(cc), arr.ind = TRUE)
+max_dist_name <- rownames(cc)[max_pos[1, "row"]]
+max_clust_name <- colnames(cc)[max_pos[1, "col"]]
+
+print(paste0("Maximal cofenetic correlation coefficient is ",
+             round(max(cc), 4)))
+print(paste0("Maximal cofenetic correlation coefficient is achieved via '",
+             max_dist_name,
+             "' distance calculation method and '",
+             max_clust_name,
+             "' clustering method."))
+```
+
+```{r}
+min_pos <- which(cc == min(cc), arr.ind = TRUE)
+min_dist_name <- rownames(cc)[min_pos[1, "row"]]
+min_clust_name <- colnames(cc)[min_pos[1, "col"]]
+
+print(paste0("Minimal cofenetic correlation coefficient is ",
+             round(min(cc), 4)))
+print(paste0("Minimal cofenetic correlation coefficient is achieved via '",
+             min_dist_name,
+             "' distance calculation method and '",
+             min_clust_name,
+             "' clustering method."))
+```
+
+# Task 7
+
+## Cluster number manual setting
+
+```{r}
+D_manh <- dist(df, method='manhattan')
+optimal_hclust <- hclust(D_manh, method='complete')
+plot(optimal_hclust, xlab='Manual clusters number setting', sub='')
+rect.hclust(optimal_hclust, k=2, border='blue')
+rect.hclust(optimal_hclust, k=3, border='purple')
+rect.hclust(optimal_hclust, k=4, border='red')
+rect.hclust(optimal_hclust, k=5, border='orange')
+```
+
+## Threshold setting
+
+```{r}
+plot(optimal_hclust, xlab='Height threshold setting', sub='')
+rect.hclust(optimal_hclust, h=0.8, border='blue')
+rect.hclust(optimal_hclust, h=0.4, border='purple')
+rect.hclust(optimal_hclust, h=0.2, border='red')
+rect.hclust(optimal_hclust, h=0.1, border='orange')
+```
+
+## Silhouette method
+
+```{r}
+n <- 23
+sil_width <- numeric()
+for (k in 2:n) {
+  cluster_labels <- cutree(optimal_hclust, k)
+  sil_width[k] <- mean(silhouette(cluster_labels, D_manh)[, 3])
+}
+
+sil_df <- data.frame(x = 2:n, y = sil_width[2:n])
+```
+
+```{r}
+ggplot(data = sil_df, aes(x = x, y = y)) + 
+  geom_point(aes(size = y, fill = y), 
+             shape = 21, 
+             color = "black", 
+             alpha = 0.8) + 
+  geom_line(color = "purple", 
+            size = 0.7) +
+  scale_fill_gradient(low = "azure2", 
+                      high = "darkviolet") +
+  theme_minimal(base_size = 14) + 
+  labs(
+    title = "Average Silhouette Width for Different Cluster Counts",
+    x = "Number of Clusters",
+    y = "Average Silhouette Width") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    axis.title = element_text(face = "bold")
+  )
+```
+
+# Task 8
+
+## Cluster centers
+
+```{r}
+cluster_labels <- cutree(optimal_hclust, 4)
+df$cluster <- cluster_labels
+df
+```
+
+```{r}
+cluster_centers <- df %>%
+  group_by(cluster) %>%
+  summarise(across(everything(), mean))
+
+cluster_centers
+```
+
+```{r}
+ggplot(df, aes(x = V1, y = V2, color = as.factor(cluster))) +
+  geom_point(size=2.5) +
+  geom_point(data = cluster_centers, 
+             aes(x = V1, y = V2), 
+             color = "black", 
+             shape = 9, 
+             size = 4) +
+  theme_minimal() +
+  labs(
+    title = "Experimental Data Scatter Plot with Clusters",
+    x = "V1",
+    y = "V2",
+    color = "Cluster") +
+  scale_color_manual(values = c("red", "blue", "green", "purple", "orange")) 
+```
+
+## Intercluster variance
+
+$$
+D_{C_k} = \frac{1}{N_{C_k}} \sum_{i=1}^{N_{C_k}} d^2(n_i, c)
+$$
+
+```{r}
+for (cluster in 1:4) {
+  df_cluster <- df[df$cluster == cluster, 1:2]
+  N_k <- nrow(df_cluster)
+  
+  cluster_matrix <- as.matrix(df_cluster)
+  center_pos <- as.numeric(cluster_centers[cluster_centers$cluster == cluster, 2:3])
+  
+  distances <- rowSums((cluster_matrix - center_pos)^2)
+  
+  print(paste0("Intercluster dispersion for cluster ",
+               cluster,
+               ": ",
+               sum(distances)/N_k))
+}
+```

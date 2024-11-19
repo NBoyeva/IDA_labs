@@ -215,6 +215,32 @@ for (i in 1:K) {
 PC_vars_df <- data.frame(PC=PC_names, Var=PC_vars)
 ```
 
+Check proportion of variation of first M components:
+
+```{r}
+sum_var <- 0
+M <- 2
+for (i in 1:M) {
+  sum_var <- sum_var + diag(L)[i]/sum(diag(L))
+}
+sum_var
+```
+
+Determine number of PCs to use:
+
+```{r}
+sum_var <- 0
+for (i in 1:K) {
+   sum_var <- sum_var + diag(L)[i]/sum(diag(L))
+   if (sum_var >= 0.95) {
+     print(paste0("You should use ", i, " PCs"))
+     break
+   }
+}
+```
+
+Visualize variance proportions of PCs:
+
 ```{r}
 ggplot(PC_vars_df, aes(x = PC, y = Var)) +
   geom_bar(stat = "identity") +

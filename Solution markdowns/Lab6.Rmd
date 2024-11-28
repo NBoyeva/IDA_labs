@@ -1,0 +1,189 @@
+---
+title: "Lab 6"
+author: "Nadzeya_Boyeva"
+date: "2024-11-28"
+output: pdf_document
+---
+
+```{r}
+library(rgl)
+```
+
+# Task 1. Plot function
+
+$$
+F(x, y) = \frac{x^2 + y^2}{30} - cox(x)cos(\frac{y}{\sqrt2})
+$$
+
+```{r}
+Lx <- -10 # x left limit
+Rx <- 10 # x right limit
+stepx <- 0.2 # x axis step
+Ly <- -10 # y left limit
+Ry <- 10 # y right limit
+stepy <- 0.2 # y axis step
+# Axes grid
+xs <- seq(Lx,Rx,stepx)
+ys <- seq(Ly,Ry,stepy)
+z <- outer(xs, ys, function(x, y) (x^2 + y^2)/30 - cos(x) * cos(y/sqrt(2)))
+persp(xs, ys, z, phi = 50, theta = -30, col = "purple")
+```
+
+# Task 2. Simple Stochastic Search
+
+```{r}
+N <- 1000  # Number of random points
+M <- 2     # Number of variables (x and y)
+lower_bounds <- c(-10, -10)
+upper_bounds <- c(10, 10)
+
+F <- function(X) {
+  x <- X[1]
+  y <- X[2]
+  return((x^2 + y^2) / 30 - cos(x) * cos(y / sqrt(2)))
+}
+```
+
+```{r}
+X_i <- matrix(NA, nrow=N, ncol=M)  # Matrix to store the random points
+for (i in 1:N) {
+  for (k in 1:M) {
+    X_i[i, k] <- lower_bounds[k] + (upper_bounds[k] - lower_bounds[k]) * runif(1)
+  }
+}
+```
+
+```{r}
+F_values <- apply(X_i, 1, F)
+sss_df <- data.frame(data.frame(X_i))
+sss_df$F_X <- F_values
+
+min_index <- which.min(F_values)
+X_min <- X_i[min_index, ]
+F_min <- F_values[min_index]
+
+cat("Global minimum found at X =", X_min, "with F(X) =", F_min, "\n")
+```
+
+```{r}
+sss_df
+```
+
+```{r}
+open3d()
+persp3d(xs, ys, z, col = "purple", alpha = 0.5, phi = 50, theta = -30, 
+        xlab = "X", ylab = "Y", zlab = "F(X,Y)")
+
+points3d(sss_df$X1, sss_df$X2, sss_df$F_X, col = "red", size = 4)
+
+final_point <- nrow(sss_df)
+points3d(X_min[1], 
+         X_min[2], 
+         F_min, 
+         col = "yellow", size = 10)
+```
+
+# Task 3. Simulated Annealing
+
+Initial point:
+
+$$
+x_{k, i} = a_k + (b_k - a_k) \cdot \varepsilon_{k, i}
+$$
+
+```{r}
+T_max <- 50   # Maximum temperature
+T_min <- 0.0001  # Minimum temperature
+v <- 0.99     # Temperature decay rate
+max_iter <- 10000  # Maximum number of iterations
+
+X <- runif(M, lower_bounds, upper_bounds)
+X0 <- X # Initial random point
+T_curr <- T_max
+
+progress_df <- data.frame(Iteration = integer(0), 
+                          Temperature = numeric(0), 
+                          X1 = numeric(0), 
+                          X2 = numeric(0), 
+                          F_X = numeric(0))
+```
+
+Perturbation for faster algorithm:
+
+$$
+x_k' = x_k + z_k \cdot T \cdot \left( \left( 1 + \frac{l}{T} \right) \cdot \left( 2 \cdot \varepsilon_k - 1 \right) - 1 \right)
+$$
+
+```{r}
+l <- 0
+X_i_prime <- X0
+ 
+while (T_curr > T_min && l < max_iter) {
+  l <- l + 1
+  
+  #Z <- rnorm(M)  # Random Gaussian values
+  #X_i_prime <- X + Z * T_curr
+  
+  epsilon <- runif(M)
+  for (k in 1:M) {
+    X_i_prime[k] <- X[k] + Z[k] * T_curr * ((1 + l / T) * (2 * epsilon[k] - 1) - 1)
+  }
+  
+  # Check if new point is within bounds
+  X_i_prime <- pmin(pmax(X_i_prime, lower_bounds), upper_bounds)
+  
+  F_X <- F(X)
+  F_X_prime <- F(X_i_prime)
+  
+  # Energy difference
+  delta_E <- F_X_prime - F_X
+  
+  # If the new point is better... 
+  if (delta_E < 0) {
+    
+    X <- X_i_prime
+    
+  } else {
+    
+    P <- exp(-delta_E / T_curr)
+    if (runif(1) < P) { # ...or if it passes the probability test...
+      X <- X_i_prime    # ...accept it
+    } else {
+      T_curr <- v * T_curr
+    }
+  }
+  
+  T_curr <- v * T_curr
+  
+  progress_df <- rbind(progress_df, data.frame(Iteration = l, 
+                                               Temperature = T_curr, 
+                                               X1 = X[1], 
+                                               X2 = X[2], 
+                                               F_X = F_X))
+}
+
+cat("Global minimum found at X =", X, "with F(X) =", F(X), "\n")
+```
+
+```{r}
+progress_df
+```
+
+```{r}
+open3d()
+persp3d(xs, ys, z, col = "purple", alpha = 0.5, phi = 50, theta = -30, 
+        xlab = "X", ylab = "Y", zlab = "F(X,Y)")
+
+points3d(progress_df$X1, progress_df$X2, progress_df$F_X, col = "red", size = 4)
+
+for (i in 2:nrow(progress_df)) {
+  lines3d(c(progress_df$X1[i-1], progress_df$X1[i]), 
+          c(progress_df$X2[i-1], progress_df$X2[i]), 
+          c(progress_df$F_X[i-1], progress_df$F_X[i]), 
+          col = "black", lwd = 1)
+}
+
+final_point <- nrow(progress_df)
+points3d(progress_df$X1[final_point], progress_df$X2[final_point], progress_df$F_X[final_point], 
+         col = "yellow", size = 10)
+```
